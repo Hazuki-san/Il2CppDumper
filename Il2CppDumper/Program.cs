@@ -96,6 +96,42 @@ namespace Il2CppDumper
                 {
                     if (Init(il2cppPath, metadataPath, out var metadata, out var il2Cpp))
                     {
+                        // HyperTech Crackproof scrambles methodDef token values (its own decryptor overflows 24 bits, corrupting them).
+                        // Detect that (many tokens whose table byte != 0x06) and, since the methodDef array order is preserved == rid order,
+                        // restore each token to 0x06000000 | (positionWithinImage + 1).
+                        if (il2Cpp.Version >= 24.2 && metadata.methodDefs.Length > 0)
+                        {
+                            int badHigh = 0;
+                            foreach (var md in metadata.methodDefs)
+                                if ((md.token >> 24) != 0x06) badHigh++;
+                            if (badHigh > metadata.methodDefs.Length / 100)
+                            {
+                                int fixedCount = 0;
+                                foreach (var img in metadata.imageDefs)
+                                {
+                                    var tEnd = img.typeStart + (int)img.typeCount;
+                                    int imageFirst = int.MaxValue;
+                                    for (int t = img.typeStart; t < tEnd; t++)
+                                    {
+                                        var td = metadata.typeDefs[t];
+                                        if (td.method_count > 0 && td.methodStart >= 0 && td.methodStart < imageFirst)
+                                            imageFirst = td.methodStart;
+                                    }
+                                    if (imageFirst == int.MaxValue) continue;
+                                    for (int t = img.typeStart; t < tEnd; t++)
+                                    {
+                                        var td = metadata.typeDefs[t];
+                                        var mEnd = td.methodStart + td.method_count;
+                                        for (int m = td.methodStart; m < mEnd; m++)
+                                        {
+                                            metadata.methodDefs[m].token = 0x06000000u | (uint)(m - imageFirst + 1);
+                                            fixedCount++;
+                                        }
+                                    }
+                                }
+                                Console.WriteLine($"Detected scrambled method tokens ({badHigh} bad); restored {fixedCount} tokens to positional rids.");
+                            }
+                        }
                         Dump(metadata, il2Cpp, outputDir);
                     }
                 }
