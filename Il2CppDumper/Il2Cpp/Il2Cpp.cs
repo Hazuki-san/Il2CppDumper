@@ -324,9 +324,10 @@ namespace Il2CppDumper
         {
             if (Version >= 24.2)
             {
-                var methodToken = methodDef.token;
                 var ptrs = codeGenModuleMethodPointers[imageName];
-                var methodPointerIndex = methodToken & 0x00FFFFFFu;
+                var methodPointerIndex = methodDef.token & 0x00FFFFFFu;
+                if (methodPointerIndex == 0 || methodPointerIndex - 1 >= (uint)ptrs.Length)
+                    return 0;
                 return ptrs[methodPointerIndex - 1];
             }
             else
